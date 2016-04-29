@@ -26,13 +26,13 @@ ok  	sync	       11.662s
 ```
 $ go test -bench .
 PASS
-BenchmarkWaitGroupUncontended-4		 5000000		328 ns/op
-BenchmarkWaitGroupAddDone-4     	 3000000	       	428 ns/op
-BenchmarkWaitGroupAddDoneWork-4 	 3000000	       	562 ns/op
-BenchmarkWaitGroupWait-4        	 5000000	       	268 ns/op
-BenchmarkWaitGroupWaitWork-4    	 5000000		301 ns/op
-BenchmarkWaitGroupActuallyWait-4	 3000000		509 ns/op
+BenchmarkWaitGroupUncontended-4		10000000		128 ns/op
+BenchmarkWaitGroupAddDone-4     	30000000		57.9 ns/op
+BenchmarkWaitGroupAddDoneWork-4 	20000000		59.1 ns/op
+BenchmarkWaitGroupWait-4        	500000000		3.03 ns/op
+BenchmarkWaitGroupWaitWork-4    	30000000		47.8 ns/op
+BenchmarkWaitGroupActuallyWait-4	 5000000		348 ns/op
 	128 B/op        2 allocs/op
-ok  	github.com/abligh/waitgroupext	  12.559s
+ok  	github.com/abligh/waitgroupext	9.877s
 ```
 

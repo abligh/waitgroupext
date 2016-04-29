@@ -1,14 +1,12 @@
 package waitgroupext
 
 import (
-	"sync"
 	"sync/atomic"
 )
 
 type WaitGroup struct {
-	channel chan struct{}
-	mutex   sync.Mutex
-	counter int
+	channel atomic.Value
+	counter int32
 	waiting int32
 }
 
@@ -29,26 +27,29 @@ func (wg *WaitGroup) Add(delta int) {
 	if delta == 0 {
 		return
 	}
-	wg.mutex.Lock()
-	defer wg.mutex.Unlock()
-	if delta < 0 {
-		wg.counter += delta
-		if wg.counter == 0 {
-			close(wg.channel)
-		}
-		if wg.counter < 0 {
-			wg.counter = 0
-			panic("waitgroupext: negative WaitGroup counter")
-		}
-	} else {
+	ctr := atomic.AddInt32(&wg.counter, int32(delta))
+	if delta > 0 {
 		if atomic.LoadInt32(&wg.waiting) != 0 {
+			atomic.AddInt32(&wg.counter, int32(-delta))
 			panic("waitgroupext: WaitGroup misuse: Add called concurrently with Wait")
 		}
-		if wg.counter == 0 {
-			wg.channel = make(chan struct{})
+		// As it's illegal to call Add() concurrently with Wait(), we know
+		// we aren't in Wait(), so this is safe
+		if ctr == int32(delta) {
+			wg.channel.Store(make(chan struct{}))
 		}
-		wg.counter += delta
 	}
+	if ctr > 0 {
+		return
+	}
+	defer func() {
+		recover()
+		if ctr < 0 {
+			atomic.StoreInt32(&wg.counter, 0)
+			panic("waitgroupext: negative WaitGroup counter")
+		}
+	}()
+	close(wg.channel.Load().(chan struct{}))
 }
 
 // Done decrements the WaitGroup counter.
@@ -61,9 +62,13 @@ func (wg *WaitGroup) Done() {
 // WaitChannel() is called, the returned channel will not
 // necessarily wait for such nwely added items.
 func (wg *WaitGroup) Wait() {
+	// fast path
+	if atomic.LoadInt32(&wg.counter) == 0 {
+		return
+	}
 	atomic.AddInt32(&wg.waiting, 1)
-	defer atomic.AddInt32(&wg.waiting, -1)
 	<-wg.WaitChannel()
+	atomic.AddInt32(&wg.waiting, -1)
 }
 
 // WaitChan returns a channel which is only readable when
@@ -86,11 +91,15 @@ func (wg *WaitGroup) WaitChannel() <-chan struct{} {
 	// will not necessarily wait for Add() performed after
 	// WaitChannel() was called. This is a slight relaxation
 	// of the conventional WaitGroup semantics
-	wg.mutex.Lock()
-	defer wg.mutex.Unlock()
-	if wg.counter == 0 && wg.channel == nil {
-		wg.channel = make(chan struct{})
-		close(wg.channel)
+	///
+	// this test is safe as we can't call Add() while in Wait()
+	// so an existing channel can only be closed
+	v := wg.channel.Load()
+	if v == nil {
+		c := make(chan struct{})
+		close(c)
+		wg.channel.Store(c)
+		return c
 	}
-	return wg.channel
+	return v.(chan struct{})
 }
